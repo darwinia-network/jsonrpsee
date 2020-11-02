@@ -36,6 +36,8 @@ use futures::{
 };
 use std::{collections::HashMap, error, io, marker::PhantomData};
 
+use async_std::sync::{Arc, Mutex};
+
 /// Client that can be cloned.
 ///
 /// > **Note**: This struct is designed to be easy to use, but it works by maintaining a background
@@ -44,7 +46,8 @@ use std::{collections::HashMap, error, io, marker::PhantomData};
 #[derive(Clone)]
 pub struct Client {
     /// Channel to send requests to the background task.
-    to_back: mpsc::Sender<FrontToBack>,
+	to_back: mpsc::Sender<FrontToBack>,
+	pub killer: Arc<Mutex<mpsc::Receiver<()>>>
 }
 
 /// Active subscription on a [`Client`].
@@ -123,10 +126,12 @@ impl Client {
         R::Error: error::Error + Send + Sync,
     {
         let (to_back, from_front) = mpsc::channel(16);
+		let (whipser, killer) = mpsc::channel(1);
+		let killer = Arc::new(Mutex::new(killer));
         async_std::task::spawn(async move {
-            background_task(client, from_front).await;
+            background_task(client, from_front, whipser).await;
         });
-        Client { to_back }
+        Client { to_back, killer }
     }
 
     /// Send a notification to the server.
@@ -260,7 +265,7 @@ impl<Notif> Drop for Subscription<Notif> {
 }
 
 /// Function being run in the background that processes messages from the frontend.
-async fn background_task<R>(mut client: RawClient<R>, mut from_front: mpsc::Receiver<FrontToBack>)
+async fn background_task<R>(mut client: RawClient<R>, mut from_front: mpsc::Receiver<FrontToBack>, mut whipser: mpsc::Sender<()>)
 where
     R: TransportClient + Send + 'static,
     R::Error: error::Error + Send + Sync,
@@ -277,6 +282,8 @@ where
     // List of requests that the server must answer.
     let mut ongoing_requests: HashMap<RawClientRequestId, oneshot::Sender<Result<_, _>>> =
         HashMap::new();
+
+	let mut count = 0u8;
 
     loop {
         // We need to do a little transformation in order to destroy the borrow to `client`
@@ -402,9 +409,25 @@ where
             Either::Right(Ok(RawClientEvent::Unsubscribed { request_id: _ })) => {}
 
             Either::Right(Err(e)) => {
-                // TODO: https://github.com/paritytech/jsonrpsee/issues/67
-                log::error!("Client Error: {:?}", e);
+				// TODO: https://github.com/paritytech/jsonrpsee/issues/67
+				if count == 0 {
+					log::error!("Client Error: {:?}", e);
+				}
+
+				if let crate::raw::client::RawClientError::Inner(e) = e {
+                    count += 1;
+
+                    if count > 30 {
+						whipser.send(()).await;
+
+						count = 0;
+                    }
+                }
+
+				continue;
             }
-        }
+		}
+
+		count = 0;
     }
 }
