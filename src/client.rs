@@ -278,6 +278,8 @@ where
     let mut ongoing_requests: HashMap<RawClientRequestId, oneshot::Sender<Result<_, _>>> =
         HashMap::new();
 
+	let mut count = 0;
+
     loop {
         // We need to do a little transformation in order to destroy the borrow to `client`
         // and `from_front`.
@@ -403,8 +405,20 @@ where
 
             Either::Right(Err(e)) => {
                 // TODO: https://github.com/paritytech/jsonrpsee/issues/67
-                log::error!("Client Error: {:?}", e);
+				log::error!("Client Error: {:?}", e);
+
+				if let crate::raw::client::RawClientError::Inner(e) = e {
+                    count += 1;
+
+                    if count > 30 {
+                        std::process::exit(1);
+                    }
+                }
+
+                continue;
             }
-        }
+		}
+
+		count = 0;
     }
 }
