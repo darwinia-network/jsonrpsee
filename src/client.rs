@@ -73,6 +73,8 @@ pub enum RequestError {
     /// Failed to parse the data that the server sent back to us.
     #[error("Parse error: {0}")]
     ParseError(#[source] common::ParseError),
+	#[error("Request timeout")]
+	Timeout,
 }
 
 /// Message that the [`Client`] can send to the background task.
@@ -172,16 +174,21 @@ impl Client {
 
         // TODO: send a `ChannelClosed` message if we close the channel unexpectedly
 
-        let json_value = match send_back_rx.await {
-            Ok(Ok(v)) => v,
-            Ok(Err(err)) => return Err(err),
-            Err(_) => {
-                let err = io::Error::new(io::ErrorKind::Other, "background task closed");
-                return Err(RequestError::TransportError(Box::new(err)));
-            }
-        };
-
-        common::from_value(json_value).map_err(RequestError::ParseError)
+		let timeout = async_std::task::sleep(std::time::Duration::from_secs(30));
+		futures::pin_mut!(send_back_rx, timeout);
+		match future::select(send_back_rx, timeout).await {
+			future::Either::Left((send_back_rx, _)) => match send_back_rx {
+				Ok(Ok(v)) => {
+					common::from_value(v).map_err(RequestError::ParseError)
+				},
+				Ok(Err(err)) => return Err(err),
+				Err(_) => {
+					let err = io::Error::new(io::ErrorKind::Other, "background task closed");
+					return Err(RequestError::TransportError(Box::new(err)));
+				}
+			},
+			future::Either::Right((_, _)) => return Err(RequestError::Timeout),
+		}
     }
 
     /// Send a subscription request to the server.
