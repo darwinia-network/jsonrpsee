@@ -19,7 +19,7 @@ soketto = "0.4"
 pin-project = "1"
 thiserror = "1"
 url = "2"
-webpki = "0.21"
+webpki = "0.22"
 
 [dev-dependencies]
 jsonrpsee-test-utils = { path = "../test-utils" }
