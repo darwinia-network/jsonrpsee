@@ -31,13 +31,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cargo fmt
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: fmt
           args: --all -- --check
 
       - name: Cargo clippy
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: clippy
           args: -- -A clippy::mutable_key_type
@@ -65,13 +65,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cargo check no-default-features
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: check
           args: --benches --tests
 
       - name: Cargo check all-features
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: check
           args: --benches --tests --all-features
@@ -100,12 +100,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cargo build
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: build
           args: --workspace
 
       - name: Cargo test
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1.0.3
         with:
           command: test
